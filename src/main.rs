@@ -25,7 +25,7 @@ Pre-commit hook (lefthook.yml):
         run: iopt {staged_files}
         stage_fixed: true";
 
-/// Lossless image optimizer for CI pipelines and pre-commit hooks.
+/// Fast, lossless image optimizer.
 ///
 /// Optimizes PNG, JPEG, GIF, WebP and SVG files in place without any
 /// quality loss (recompression only — pixels stay bit-identical; SVG is

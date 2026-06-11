@@ -1,8 +1,8 @@
 # iopt
 
-Lossless image optimizer for CI pipelines and pre-commit hooks.
+Fast, lossless image optimizer for the command line.
 
-`iopt` recompresses PNG, JPEG, GIF, WebP and SVG files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a fast, dependency-free CLI you can drop into a CI job or a git hook. Files are only rewritten when the result is smaller, so running it twice is a no-op.
+`iopt` recompresses PNG, JPEG, GIF, WebP and SVG files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a small, dependency-free CLI that works anywhere: a folder of photos, a website's asset directory, a script, a build pipeline. Files are only rewritten when the result is smaller, so running it twice is a no-op.
 
 ```console
 $ iopt assets/
@@ -17,7 +17,7 @@ assets/icon.svg  1.5 KB → 767 B  (-50.1%)
 
 ## Why
 
-Images are usually the heaviest assets in a repo, and most of them ship with 10–30% of pure waste: unoptimized deflate streams, non-optimized Huffman tables, baseline instead of progressive encoding. Designers' export tools don't care; your bundle size does.
+Most images ship with 10–30% of pure waste: unoptimized deflate streams, non-optimized Huffman tables, baseline instead of progressive encoding. Export tools don't care; your disk space and bandwidth do.
 
 `iopt` removes that waste **losslessly** — the decoded pixels are bit-for-bit identical before and after. There is no quality slider because nothing is ever degraded.
 
@@ -35,20 +35,20 @@ Images are usually the heaviest assets in a repo, and most of them ship with 10�
 cargo install --path .
 ```
 
-Requires a Rust toolchain. The mozjpeg C library is built and statically linked automatically; no system dependencies are needed.
+Requires a Rust toolchain. The mozjpeg and libwebp C libraries are built and statically linked automatically; no system dependencies are needed.
 
 ## Usage
 
 ```sh
-iopt assets/ static/logo.png     # optimize files and directories in place
-iopt --check assets/             # CI gate: write nothing, exit 1 if anything is optimizable
-iopt --strip assets/             # also remove EXIF/ICC/comments
+iopt photos/ logo.png            # optimize files and directories in place
+iopt --check assets/             # write nothing, exit 1 if anything is optimizable
+iopt --strip photos/             # also remove EXIF/ICC/comments
 iopt --zopfli --level 6 assets/  # squeeze PNGs as hard as possible (slow)
 ```
 
 | Option | Description |
 | --- | --- |
-| `--check` | Dry run. Exit `1` if any file could be smaller — fail the build, fix locally. |
+| `--check` | Dry run: report potential savings without writing, exit `1` if any file could be smaller. |
 | `--strip` | Strip metadata. JPEG: EXIF, ICC, comments. PNG: non-essential chunks. GIF: comments. WebP: ICC, EXIF, XMP. SVG: comments, `<metadata>`, editor attributes. |
 | `--level <0-6>` | PNG effort preset (default `2`; `6` is slowest/smallest). |
 | `--zopfli` | Use Zopfli for PNG deflate. Much slower, usually a bit smaller. |
@@ -56,37 +56,6 @@ iopt --zopfli --level 6 assets/  # squeeze PNGs as hard as possible (slow)
 | `-q, --quiet` | Only print the summary and errors. |
 
 Exit codes: `0` success · `1` `--check` found optimizable files · `2` one or more files failed.
-
-### CI (GitHub Actions)
-
-Fail the build when someone commits an unoptimized image:
-
-```yaml
-- name: Check images are optimized
-  run: iopt --check assets/
-```
-
-### Pre-commit hook
-
-With [lefthook](https://github.com/evilmartians/lefthook) — staged images are optimized and re-staged automatically:
-
-```yaml
-# lefthook.yml
-pre-commit:
-  commands:
-    iopt:
-      glob: "*.{png,apng,jpg,jpeg,gif,webp,svg}"
-      run: iopt {staged_files}
-      stage_fixed: true
-```
-
-Or as a plain git hook in `.git/hooks/pre-commit`:
-
-```sh
-#!/bin/sh
-git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(a?png|jpe?g|gif|webp|svg)$' \
-  | xargs -r iopt && git update-index --again
-```
 
 ## Guarantees
 
@@ -107,9 +76,40 @@ git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(a?png|jpe?g|gif|w
 | SVG | ✅ Supported | oxvg markup minification (svgo port) — rendering-equivalent, not byte-identical |
 | AVIF / JPEG XL | ❌ Not planned | their encoders are huge native dependencies, and files produced by modern encoders rarely shrink under lossless re-encode — poor trade-off for a tool meant to stay lean |
 
+## Automation
+
+Because `iopt` is idempotent, only ever shrinks files, and reports through exit codes, it is safe to run unattended. A few recipes:
+
+**Fail a CI build when someone commits an unoptimized image:**
+
+```yaml
+- name: Check images are optimized
+  run: iopt --check assets/
+```
+
+**Optimize staged images on commit** with [lefthook](https://github.com/evilmartians/lefthook) (files are re-staged automatically):
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    iopt:
+      glob: "*.{png,apng,jpg,jpeg,gif,webp,svg}"
+      run: iopt {staged_files}
+      stage_fixed: true
+```
+
+Or as a plain git hook in `.git/hooks/pre-commit`:
+
+```sh
+#!/bin/sh
+git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(a?png|jpe?g|gif|webp|svg)$' \
+  | xargs -r iopt && git update-index --again
+```
+
 ## Non-goals
 
-Lossy compression (quality reduction, resizing, chroma subsampling) is out of scope by design — `iopt` is meant to be safe to run automatically on every commit. Converting between formats (e.g. PNG → WebP) is also out of scope: `iopt` makes the files you have smaller, it doesn't change what they are.
+Lossy compression (quality reduction, resizing, chroma subsampling) is out of scope by design — `iopt` is meant to be safe to run unattended. Converting between formats (e.g. PNG → WebP) is also out of scope: `iopt` makes the files you have smaller, it doesn't change what they are.
 
 ## Development
 

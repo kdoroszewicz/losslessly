@@ -2,9 +2,9 @@
 name = "iopt"
 version = "0.1.0"
 edition = "2024"
-description = "Lossless image optimizer for CI pipelines and pre-commit hooks"
+description = "Fast, lossless image optimizer for PNG, JPEG, GIF, WebP and SVG"
 license = "MIT"
-keywords = ["image", "optimization", "png", "jpeg", "ci"]
+keywords = ["image", "optimization", "png", "jpeg", "lossless"]
 categories = ["command-line-utilities", "multimedia::images"]
 
 [dependencies]
