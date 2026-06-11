@@ -1,6 +1,8 @@
 mod gif;
 mod jpeg;
 mod png;
+mod svg;
+mod webp;
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -11,7 +13,7 @@ use walkdir::WalkDir;
 
 const EXAMPLES: &str = "\
 Examples:
-  iopt assets/                   optimize every PNG/JPEG/GIF under assets/ in place
+  iopt assets/                   optimize every supported image under assets/ in place
   iopt --check assets/           CI gate: exit 1 if any file could be smaller
   iopt --strip --zopfli assets/  smallest output, metadata removed
 
@@ -19,15 +21,16 @@ Pre-commit hook (lefthook.yml):
   pre-commit:
     commands:
       iopt:
-        glob: \"*.{png,jpg,jpeg,gif}\"
+        glob: \"*.{png,apng,jpg,jpeg,gif,webp,svg}\"
         run: iopt {staged_files}
         stage_fixed: true";
 
 /// Lossless image optimizer for CI pipelines and pre-commit hooks.
 ///
-/// Optimizes PNG, JPEG and GIF files in place without any quality loss
-/// (recompression only — pixels stay bit-identical). Files are only
-/// rewritten when the result is smaller.
+/// Optimizes PNG, JPEG, GIF, WebP and SVG files in place without any
+/// quality loss (recompression only — pixels stay bit-identical; SVG is
+/// minified to a rendering-equivalent document). Files are only rewritten
+/// when the result is smaller.
 ///
 /// Exit codes: 0 = success, 1 = --check found optimizable files,
 /// 2 = one or more files failed to process.
@@ -42,7 +45,7 @@ struct Cli {
     #[arg(long)]
     check: bool,
 
-    /// Strip metadata (JPEG: EXIF/ICC/comments; PNG: non-essential chunks; GIF: comments)
+    /// Strip metadata (EXIF/ICC/XMP/comments/non-essential chunks, per format)
     #[arg(long)]
     strip: bool,
 
@@ -68,6 +71,8 @@ enum Format {
     Png,
     Jpeg,
     Gif,
+    Webp,
+    Svg,
 }
 
 enum Outcome {
@@ -98,7 +103,7 @@ fn main() -> ExitCode {
 
     if files.is_empty() {
         if !cli.quiet {
-            println!("No PNG, JPEG or GIF files found.");
+            println!("No supported image files found.");
         }
         return ExitCode::SUCCESS;
     }
@@ -200,7 +205,7 @@ fn collect_files(paths: &[PathBuf]) -> Result<Vec<(PathBuf, Format)>> {
             match format_from_extension(path) {
                 Some(format) => files.push((path.clone(), format)),
                 None => bail!(
-                    "{}: unsupported file type (expected .png, .apng, .jpg, .jpeg or .gif)",
+                    "{}: unsupported file type (expected .png, .apng, .jpg, .jpeg, .gif, .webp or .svg)",
                     path.display()
                 ),
             }
@@ -218,6 +223,8 @@ fn format_from_extension(path: &Path) -> Option<Format> {
         "png" | "apng" => Some(Format::Png),
         "jpg" | "jpeg" => Some(Format::Jpeg),
         "gif" => Some(Format::Gif),
+        "webp" => Some(Format::Webp),
+        "svg" => Some(Format::Svg),
         _ => None,
     }
 }
@@ -230,6 +237,11 @@ fn process_file(path: &Path, format: Format, cli: &Cli) -> Result<Outcome> {
         Format::Png => data.starts_with(b"\x89PNG\r\n\x1a\n"),
         Format::Jpeg => data.starts_with(b"\xff\xd8\xff"),
         Format::Gif => data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a"),
+        Format::Webp => data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP"),
+        // SVG is text with a flexible prologue; look for the root tag early on.
+        Format::Svg => data
+            .get(..data.len().min(1024))
+            .is_some_and(|head| head.windows(4).any(|w| w == b"<svg")),
     };
     if !magic_ok {
         bail!("file content does not match its extension, skipping");
@@ -242,6 +254,11 @@ fn process_file(path: &Path, format: Format, cli: &Cli) -> Result<Outcome> {
             Some(out) => out,
             None => return Ok(Outcome::Unchanged),
         },
+        Format::Webp => match webp::optimize(&data, cli.strip)? {
+            Some(out) => out,
+            None => return Ok(Outcome::Unchanged),
+        },
+        Format::Svg => svg::optimize(&data, cli.strip)?,
     };
 
     if optimized.len() >= data.len() {

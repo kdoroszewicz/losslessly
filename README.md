@@ -2,7 +2,7 @@
 
 Lossless image optimizer for CI pipelines and pre-commit hooks.
 
-`iopt` recompresses PNG, JPEG and GIF files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a fast, dependency-free CLI you can drop into a CI job or a git hook. Files are only rewritten when the result is smaller, so running it twice is a no-op.
+`iopt` recompresses PNG, JPEG, GIF, WebP and SVG files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a fast, dependency-free CLI you can drop into a CI job or a git hook. Files are only rewritten when the result is smaller, so running it twice is a no-op.
 
 ```console
 $ iopt assets/
@@ -10,7 +10,9 @@ assets/icons/icon.png  27.3 KB → 23.4 KB  (-14.3%)
 assets/photo.jpg  149.5 KB → 135.4 KB  (-9.5%)
 assets/photo.png  653.1 KB → 472.0 KB  (-27.7%)
 assets/demo.gif  47.0 KB → 4.6 KB  (-90.1%)
-4 optimized, 0 already optimal, 241.5 KB saved
+assets/texture.webp  1.9 KB → 760 B  (-60.7%)
+assets/icon.svg  1.5 KB → 767 B  (-50.1%)
+6 optimized, 0 already optimal, 244.1 KB saved
 ```
 
 ## Why
@@ -22,7 +24,9 @@ Images are usually the heaviest assets in a repo, and most of them ship with 10�
 - **PNG** — recompressed with [oxipng](https://github.com/oxipng/oxipng) (bit-depth/color-type reductions, filter trials, libdeflate or Zopfli).
 - **JPEG** — transcoded with [mozjpeg](https://github.com/mozilla/mozjpeg) the same way `jpegtran -optimize` works: DCT coefficients are copied verbatim and only the entropy coding is rebuilt. Both optimized-baseline and progressive variants are tried; the smaller one wins.
 - **GIF** — re-encoded as interframe deltas (the same idea as `gifsicle -O2`): a single global palette built from the exact on-screen colors, a full first frame, then per-frame bounding boxes where unchanged pixels are transparent. Rendered frames, timing and loop count are preserved exactly; animations exported as stacks of full frames routinely shrink by 80–90%. If a GIF can't be re-encoded with that guarantee (over 256 distinct on-screen colors, or frames that erase pixels back to transparent), it is left untouched.
-- **Metadata is preserved by default** (EXIF, ICC profiles, comments survive byte-for-byte). Pass `--strip` if you want it gone.
+- **WebP** — lossless (VP8L) stills are re-encoded at libwebp's maximum effort in `exact` mode, so even the RGB values of fully transparent pixels survive bit-for-bit. Lossy and animated WebP files are left untouched — re-encoding those without quality loss isn't possible.
+- **SVG** — markup minification via [oxvg](https://github.com/noahbald/oxvg) (a Rust port of svgo) using its correctness-focused preset: doctype/whitespace removal, path and transform compaction, style minification. This is the one format without a bit-level guarantee — output is rendering-equivalent at svgo's default numeric precision rather than byte-identical markup.
+- **Metadata is preserved by default** (EXIF, ICC profiles, XMP, comments survive byte-for-byte). Pass `--strip` if you want it gone.
 - Parallel across files, atomic writes (temp file + rename — a crash can never leave a truncated image), and corrupt files are refused rather than silently "fixed".
 
 ## Install
@@ -45,7 +49,7 @@ iopt --zopfli --level 6 assets/  # squeeze PNGs as hard as possible (slow)
 | Option | Description |
 | --- | --- |
 | `--check` | Dry run. Exit `1` if any file could be smaller — fail the build, fix locally. |
-| `--strip` | Strip metadata. JPEG: EXIF, ICC, comments. PNG: non-essential chunks. GIF: comments. |
+| `--strip` | Strip metadata. JPEG: EXIF, ICC, comments. PNG: non-essential chunks. GIF: comments. WebP: ICC, EXIF, XMP. SVG: comments, `<metadata>`, editor attributes. |
 | `--level <0-6>` | PNG effort preset (default `2`; `6` is slowest/smallest). |
 | `--zopfli` | Use Zopfli for PNG deflate. Much slower, usually a bit smaller. |
 | `-j, --threads <N>` | Limit parallelism (default: all logical CPUs). |
@@ -71,7 +75,7 @@ With [lefthook](https://github.com/evilmartians/lefthook) — staged images are 
 pre-commit:
   commands:
     iopt:
-      glob: "*.{png,jpg,jpeg,gif}"
+      glob: "*.{png,apng,jpg,jpeg,gif,webp,svg}"
       run: iopt {staged_files}
       stage_fixed: true
 ```
@@ -80,13 +84,13 @@ Or as a plain git hook in `.git/hooks/pre-commit`:
 
 ```sh
 #!/bin/sh
-git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(png|jpe?g|gif)$' \
+git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(a?png|jpe?g|gif|webp|svg)$' \
   | xargs -r iopt && git update-index --again
 ```
 
 ## Guarantees
 
-- **Pixels are never modified.** PNGs are recompressed losslessly; JPEGs never go through a decode–encode cycle — the frequency-domain coefficients are copied untouched; GIFs are restructured only in ways proven to render identically (and left alone otherwise).
+- **Pixels are never modified.** PNGs and lossless WebPs are recompressed losslessly; JPEGs never go through a decode–encode cycle — the frequency-domain coefficients are copied untouched; GIFs are restructured only in ways proven to render identically (and left alone otherwise). The sole exception is SVG, where the guarantee is rendering-equivalence rather than bit-identity (see Formats).
 - **Files only shrink.** If recompression doesn't help, the file is left exactly as it was.
 - **Writes are atomic.** Output goes to a temp file in the same directory and is renamed over the original, preserving permissions.
 - **Corrupt input is rejected.** libjpeg normally pads truncated files with gray blocks and carries on; `iopt` treats decoder warnings as errors and refuses to rewrite such files (exit `2`).
@@ -99,9 +103,9 @@ git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(png|jpe?g|gif)$' 
 | PNG / APNG | ✅ Supported | oxipng recompression (reductions, filter trials, libdeflate/Zopfli) |
 | JPEG | ✅ Supported | mozjpeg entropy-coding transcode (`jpegtran -optimize` equivalent) |
 | GIF | ✅ Supported | interframe delta re-encoding with exact-color global palette |
-| WebP | 🔜 Planned | re-encode lossless WebP at maximum effort; leave lossy WebP untouched |
-| SVG | 🔜 Planned | markup minification (svgo-style) — lossless to the rendered image |
-| AVIF / JPEG XL | 🤔 Considering | lossless re-encode at higher effort settings where the encoder allows it |
+| WebP | ✅ Supported | lossless (VP8L) re-encode at maximum effort in exact mode; lossy/animated untouched |
+| SVG | ✅ Supported | oxvg markup minification (svgo port) — rendering-equivalent, not byte-identical |
+| AVIF / JPEG XL | ❌ Not planned | their encoders are huge native dependencies, and files produced by modern encoders rarely shrink under lossless re-encode — poor trade-off for a tool meant to stay lean |
 
 ## Non-goals
 
@@ -114,7 +118,7 @@ cargo build --release
 cargo clippy --all-targets
 ```
 
-Two verification helpers exist for convincing yourself (or reviewers) that the optimizations really are lossless. `examples/jpegcmp.rs` decodes two JPEGs through libjpeg with no color management and verifies the pixel data is identical; `examples/gifcmp.rs` does the same for GIFs at the rendering level — composited frames, delays and loop count (`examples/gifgen.rs` generates GIF test fixtures, including pathological ones):
+Verification helpers exist for convincing yourself (or reviewers) that the optimizations really are lossless. `examples/jpegcmp.rs` decodes two JPEGs through libjpeg with no color management and verifies the pixel data is identical; `examples/webpcmp.rs` does the same through libwebp; `examples/gifcmp.rs` compares GIFs at the rendering level — composited frames, delays and loop count; `examples/svgcmp.rs` rasterizes SVGs with resvg at 2x and compares the pixels. `examples/gifgen.rs` and `examples/webpgen.rs` generate test fixtures, including pathological ones:
 
 ```console
 $ cargo run --release --example jpegcmp -- original.jpg optimized.jpg
