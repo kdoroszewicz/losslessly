@@ -2,7 +2,7 @@
 
 Fast, lossless image optimizer for the command line.
 
-`losslessly` recompresses PNG, JPEG, GIF, WebP and SVG files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a small, dependency-free CLI that works anywhere: a folder of photos, a website's asset directory, a script, a build pipeline. Files are only rewritten when the result is smaller, so running it twice is a no-op.
+`losslessly` recompresses PNG, JPEG, GIF, WebP and SVG files in place without touching a single pixel — a small, dependency-free CLI that works anywhere: a folder of photos, a website's asset directory, a script, a build pipeline. Files are only rewritten when the result is smaller, so running it twice is a no-op.
 
 ```console
 $ losslessly assets/
@@ -128,6 +128,10 @@ PIXELS IDENTICAL
 $ cargo run --release --example gifcmp -- original.gif optimized.gif
 20 frames, 200x200, repeat Infinite: RENDERS IDENTICAL
 ```
+
+## Acknowledgements
+
+`losslessly` was inspired by [ImageOptim](https://imageoptim.com), the Mac app that made lossless image optimization a one-drag affair. It stands on the shoulders of the compression projects doing the heavy lifting: [oxipng](https://github.com/oxipng/oxipng), [mozjpeg](https://github.com/mozilla/mozjpeg), [libwebp](https://chromium.googlesource.com/webm/libwebp), and [oxvg](https://github.com/noahbald/oxvg).
 
 ## License
 
