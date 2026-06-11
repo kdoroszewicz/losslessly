@@ -29,8 +29,13 @@ fn main() {
     let mut file = File::create(format!("{dir}/anim.gif")).unwrap();
     let mut enc = Encoder::new(&mut file, w, h, &palette()).unwrap();
     enc.set_repeat(Repeat::Infinite).unwrap();
-    enc.write_extension(ExtensionData::new_control_ext(10, DisposalMethod::Keep, false, None))
-        .unwrap();
+    enc.write_extension(ExtensionData::new_control_ext(
+        10,
+        DisposalMethod::Keep,
+        false,
+        None,
+    ))
+    .unwrap();
     enc.write_raw_extension(gif::AnyExtension(0xFE), &[b"iopt test comment"])
         .unwrap();
     let background: Vec<u8> = (0..w as usize * h as usize)

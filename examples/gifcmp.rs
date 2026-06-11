@@ -25,7 +25,12 @@ fn render(path: &str) -> Rendered {
         screen.blit_frame(frame).unwrap();
         frames.push((frame.delay, screen.pixels_rgba().pixels().collect()));
     }
-    Rendered { repeat, frames, width, height }
+    Rendered {
+        repeat,
+        frames,
+        width,
+        height,
+    }
 }
 
 fn main() {
@@ -42,7 +47,11 @@ fn main() {
         std::process::exit(1);
     }
     if a.frames.len() != b.frames.len() {
-        println!("FRAME COUNT DIFFERS: {} vs {}", a.frames.len(), b.frames.len());
+        println!(
+            "FRAME COUNT DIFFERS: {} vs {}",
+            a.frames.len(),
+            b.frames.len()
+        );
         std::process::exit(1);
     }
     for (i, ((da, pa), (db, pb))) in a.frames.iter().zip(&b.frames).enumerate() {

@@ -2,11 +2,11 @@
 //! mechanism as `jpegtran -optimize`): DCT coefficients are copied verbatim,
 //! only the entropy coding is rebuilt, so pixel data is bit-identical.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mozjpeg_sys::*;
 use std::mem;
 use std::os::raw::c_ulong;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
 /// libjpeg errors surface as controlled panics (see `error_exit_panic`) that
@@ -83,57 +83,57 @@ impl Drop for CompressGuard {
 
 unsafe fn transcode_unchecked(data: &[u8], progressive: bool, strip: bool) -> Vec<u8> {
     unsafe {
-    let copy_option = if strip {
-        JCOPY_OPTION_JCOPYOPT_NONE
-    } else {
-        JCOPY_OPTION_JCOPYOPT_ALL
-    };
+        let copy_option = if strip {
+            JCOPY_OPTION_JCOPYOPT_NONE
+        } else {
+            JCOPY_OPTION_JCOPYOPT_ALL
+        };
 
-    let mut src_err: jpeg_error_mgr = mem::zeroed();
-    jpeg_std_error(&mut src_err);
-    src_err.error_exit = Some(error_exit_panic);
+        let mut src_err: jpeg_error_mgr = mem::zeroed();
+        jpeg_std_error(&mut src_err);
+        src_err.error_exit = Some(error_exit_panic);
 
-    let mut src = DecompressGuard(mem::zeroed());
-    src.0.common.err = &mut src_err;
-    jpeg_create_decompress(&mut src.0);
+        let mut src = DecompressGuard(mem::zeroed());
+        src.0.common.err = &mut src_err;
+        jpeg_create_decompress(&mut src.0);
 
-    jpeg_mem_src(&mut src.0, data.as_ptr(), data.len() as c_ulong);
-    jcopy_markers_setup(&mut src.0, copy_option);
-    jpeg_read_header(&mut src.0, 1);
-    let coefficients = jpeg_read_coefficients(&mut src.0);
+        jpeg_mem_src(&mut src.0, data.as_ptr(), data.len() as c_ulong);
+        jcopy_markers_setup(&mut src.0, copy_option);
+        jpeg_read_header(&mut src.0, 1);
+        let coefficients = jpeg_read_coefficients(&mut src.0);
 
-    let mut dst_err: jpeg_error_mgr = mem::zeroed();
-    jpeg_std_error(&mut dst_err);
-    dst_err.error_exit = Some(error_exit_panic);
+        let mut dst_err: jpeg_error_mgr = mem::zeroed();
+        jpeg_std_error(&mut dst_err);
+        dst_err.error_exit = Some(error_exit_panic);
 
-    let mut dst = CompressGuard(mem::zeroed());
-    dst.0.common.err = &mut dst_err;
-    jpeg_create_compress(&mut dst.0);
+        let mut dst = CompressGuard(mem::zeroed());
+        dst.0.common.err = &mut dst_err;
+        jpeg_create_compress(&mut dst.0);
 
-    jpeg_copy_critical_parameters(&src.0, &mut dst.0);
-    dst.0.optimize_coding = 1;
-    if progressive {
-        jpeg_simple_progression(&mut dst.0);
-    }
+        jpeg_copy_critical_parameters(&src.0, &mut dst.0);
+        dst.0.optimize_coding = 1;
+        if progressive {
+            jpeg_simple_progression(&mut dst.0);
+        }
 
-    let mut out_buf: *mut u8 = ptr::null_mut();
-    let mut out_size: c_ulong = 0;
-    jpeg_mem_dest(&mut dst.0, &mut out_buf, &mut out_size);
+        let mut out_buf: *mut u8 = ptr::null_mut();
+        let mut out_size: c_ulong = 0;
+        jpeg_mem_dest(&mut dst.0, &mut out_buf, &mut out_size);
 
-    jpeg_write_coefficients(&mut dst.0, coefficients);
-    jcopy_markers_execute(&mut src.0, &mut dst.0, copy_option);
-    jpeg_finish_compress(&mut dst.0);
-    jpeg_finish_decompress(&mut src.0);
+        jpeg_write_coefficients(&mut dst.0, coefficients);
+        jcopy_markers_execute(&mut src.0, &mut dst.0, copy_option);
+        jpeg_finish_compress(&mut dst.0);
+        jpeg_finish_decompress(&mut src.0);
 
-    // libjpeg recovers from corrupt data (e.g. truncated files) by padding it
-    // and only emitting a warning. Rewriting such a file would bake the
-    // padding in, so refuse instead of silently "optimizing" garbage.
-    if src_err.num_warnings > 0 {
-        panic!("corrupt JPEG data (decoder reported warnings), refusing to rewrite");
-    }
+        // libjpeg recovers from corrupt data (e.g. truncated files) by padding it
+        // and only emitting a warning. Rewriting such a file would bake the
+        // padding in, so refuse instead of silently "optimizing" garbage.
+        if src_err.num_warnings > 0 {
+            panic!("corrupt JPEG data (decoder reported warnings), refusing to rewrite");
+        }
 
-    let result = std::slice::from_raw_parts(out_buf, out_size as usize).to_vec();
-    libc::free(out_buf.cast());
-    result
+        let result = std::slice::from_raw_parts(out_buf, out_size as usize).to_vec();
+        libc::free(out_buf.cast());
+        result
     }
 }

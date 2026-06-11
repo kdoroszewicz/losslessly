@@ -8,7 +8,7 @@
 //! on screen, or pixels that turn from opaque back to transparent), the file
 //! is left untouched instead.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use rgb::{RGB8, RGBA8};
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -110,11 +110,7 @@ fn encode(data: &[u8], plan: &Plan, strip: bool) -> Result<Vec<u8>> {
     let mut screen = gif_dispose::Screen::new_decoder(&decoder);
     let repeat = decoder.repeat();
 
-    let palette_bytes: Vec<u8> = plan
-        .palette
-        .iter()
-        .flat_map(|c| [c.r, c.g, c.b])
-        .collect();
+    let palette_bytes: Vec<u8> = plan.palette.iter().flat_map(|c| [c.r, c.g, c.b]).collect();
     let mut out = Vec::with_capacity(data.len());
     let mut encoder = Encoder::new(&mut out, plan.width, plan.height, &palette_bytes)?;
     encoder.set_repeat(repeat)?;
@@ -129,7 +125,8 @@ fn encode(data: &[u8], plan: &Plan, strip: bool) -> Result<Vec<u8>> {
     let width = plan.width as usize;
     let index_of = |px: RGBA8| -> u8 {
         if px.a == 0 {
-            plan.transparent.expect("transparency implies reserved slot")
+            plan.transparent
+                .expect("transparency implies reserved slot")
         } else {
             plan.color_index[&px.rgb()]
         }
@@ -167,9 +164,8 @@ fn encode(data: &[u8], plan: &Plan, strip: bool) -> Result<Vec<u8>> {
                     frame.top = y0 as u16;
                     frame.width = (x1 - x0 + 1) as u16;
                     frame.height = (y1 - y0 + 1) as u16;
-                    let mut buffer = Vec::with_capacity(
-                        frame.width as usize * frame.height as usize,
-                    );
+                    let mut buffer =
+                        Vec::with_capacity(frame.width as usize * frame.height as usize);
                     for y in y0..=y1 {
                         for x in x0..=x1 {
                             let i = y * width + x;
@@ -195,11 +191,7 @@ fn encode(data: &[u8], plan: &Plan, strip: bool) -> Result<Vec<u8>> {
 
 /// Bounding box of pixels that differ between two canvases, or `None` if
 /// they are identical.
-fn diff_bbox(
-    a: &[RGBA8],
-    b: &[RGBA8],
-    width: usize,
-) -> Option<(usize, usize, usize, usize)> {
+fn diff_bbox(a: &[RGBA8], b: &[RGBA8], width: usize) -> Option<(usize, usize, usize, usize)> {
     let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
     for (i, (pa, pb)) in a.iter().zip(b).enumerate() {
         if pa != pb {
@@ -256,9 +248,9 @@ fn collect_metadata_extensions(data: &[u8]) -> Result<Vec<(u8, Vec<Vec<u8>>)>> {
                     pos += len as usize;
                 }
                 let is_loop_ext = label == 0xFF
-                    && blocks
-                        .first()
-                        .is_some_and(|b| b.starts_with(b"NETSCAPE2.0") || b.starts_with(b"ANIMEXTS1.0"));
+                    && blocks.first().is_some_and(|b| {
+                        b.starts_with(b"NETSCAPE2.0") || b.starts_with(b"ANIMEXTS1.0")
+                    });
                 if label != 0xF9 && !is_loop_ext {
                     found.push((label, blocks));
                 }

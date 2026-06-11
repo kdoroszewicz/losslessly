@@ -2,7 +2,7 @@ mod gif;
 mod jpeg;
 mod png;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -25,7 +25,7 @@ Pre-commit hook (lefthook.yml):
 
 /// Lossless image optimizer for CI pipelines and pre-commit hooks.
 ///
-/// Optimizes PNG and JPEG files in place without any quality loss
+/// Optimizes PNG, JPEG and GIF files in place without any quality loss
 /// (recompression only — pixels stay bit-identical). Files are only
 /// rewritten when the result is smaller.
 ///
@@ -63,7 +63,7 @@ struct Cli {
     quiet: bool,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy)]
 enum Format {
     Png,
     Jpeg,
@@ -80,7 +80,9 @@ fn main() -> ExitCode {
     jpeg::install_panic_hook();
 
     if let Some(n) = cli.threads
-        && let Err(e) = rayon::ThreadPoolBuilder::new().num_threads(n).build_global()
+        && let Err(e) = rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build_global()
     {
         eprintln!("error: failed to configure thread pool: {e}");
         return ExitCode::from(2);
@@ -142,7 +144,11 @@ fn main() -> ExitCode {
 
     if !cli.quiet || optimized > 0 || errors > 0 {
         let saved = bytes_before.saturating_sub(bytes_after);
-        let verb = if cli.check { "optimizable" } else { "optimized" };
+        let verb = if cli.check {
+            "optimizable"
+        } else {
+            "optimized"
+        };
         println!(
             "{optimized} {verb}, {unchanged} already optimal{}{}",
             if errors > 0 {
@@ -154,7 +160,11 @@ fn main() -> ExitCode {
                 format!(
                     ", {} {}",
                     human_bytes(saved),
-                    if cli.check { "possible savings" } else { "saved" }
+                    if cli.check {
+                        "possible savings"
+                    } else {
+                        "saved"
+                    }
                 )
             } else {
                 String::new()
@@ -172,8 +182,8 @@ fn main() -> ExitCode {
 }
 
 /// Expand CLI paths into a list of image files. Directories are walked
-/// recursively, keeping only files with PNG/JPEG extensions. Files passed
-/// explicitly must be supported images.
+/// recursively, keeping only files with supported image extensions. Files
+/// passed explicitly must be supported images.
 fn collect_files(paths: &[PathBuf]) -> Result<Vec<(PathBuf, Format)>> {
     let mut files = Vec::new();
     for path in paths {
@@ -190,7 +200,7 @@ fn collect_files(paths: &[PathBuf]) -> Result<Vec<(PathBuf, Format)>> {
             match format_from_extension(path) {
                 Some(format) => files.push((path.clone(), format)),
                 None => bail!(
-                    "{}: unsupported file type (expected .png, .jpg, .jpeg or .gif)",
+                    "{}: unsupported file type (expected .png, .apng, .jpg, .jpeg or .gif)",
                     path.display()
                 ),
             }
