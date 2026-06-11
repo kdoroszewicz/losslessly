@@ -2,14 +2,15 @@
 
 Lossless image optimizer for CI pipelines and pre-commit hooks.
 
-`iopt` recompresses PNG and JPEG files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a fast, dependency-free CLI you can drop into a CI job or a git hook. Files are only rewritten when the result is smaller, so running it twice is a no-op.
+`iopt` recompresses PNG, JPEG and GIF files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a fast, dependency-free CLI you can drop into a CI job or a git hook. Files are only rewritten when the result is smaller, so running it twice is a no-op.
 
 ```console
 $ iopt assets/
 assets/icons/icon.png  27.3 KB → 23.4 KB  (-14.3%)
 assets/photo.jpg  149.5 KB → 135.4 KB  (-9.5%)
 assets/photo.png  653.1 KB → 472.0 KB  (-27.7%)
-3 optimized, 0 already optimal, 199.1 KB saved
+assets/demo.gif  47.0 KB → 4.6 KB  (-90.1%)
+4 optimized, 0 already optimal, 241.5 KB saved
 ```
 
 ## Why
@@ -20,6 +21,7 @@ Images are usually the heaviest assets in a repo, and most of them ship with 10�
 
 - **PNG** — recompressed with [oxipng](https://github.com/oxipng/oxipng) (bit-depth/color-type reductions, filter trials, libdeflate or Zopfli).
 - **JPEG** — transcoded with [mozjpeg](https://github.com/mozilla/mozjpeg) the same way `jpegtran -optimize` works: DCT coefficients are copied verbatim and only the entropy coding is rebuilt. Both optimized-baseline and progressive variants are tried; the smaller one wins.
+- **GIF** — re-encoded as interframe deltas (the same idea as `gifsicle -O2`): a single global palette built from the exact on-screen colors, a full first frame, then per-frame bounding boxes where unchanged pixels are transparent. Rendered frames, timing and loop count are preserved exactly; animations exported as stacks of full frames routinely shrink by 80–90%. If a GIF can't be re-encoded with that guarantee (over 256 distinct on-screen colors, or frames that erase pixels back to transparent), it is left untouched.
 - **Metadata is preserved by default** (EXIF, ICC profiles, comments survive byte-for-byte). Pass `--strip` if you want it gone.
 - Parallel across files, atomic writes (temp file + rename — a crash can never leave a truncated image), and corrupt files are refused rather than silently "fixed".
 
@@ -43,7 +45,7 @@ iopt --zopfli --level 6 assets/  # squeeze PNGs as hard as possible (slow)
 | Option | Description |
 | --- | --- |
 | `--check` | Dry run. Exit `1` if any file could be smaller — fail the build, fix locally. |
-| `--strip` | Strip metadata. JPEG: EXIF, ICC, comments. PNG: non-essential chunks. |
+| `--strip` | Strip metadata. JPEG: EXIF, ICC, comments. PNG: non-essential chunks. GIF: comments. |
 | `--level <0-6>` | PNG effort preset (default `2`; `6` is slowest/smallest). |
 | `--zopfli` | Use Zopfli for PNG deflate. Much slower, usually a bit smaller. |
 | `-j, --threads <N>` | Limit parallelism (default: all logical CPUs). |
@@ -71,20 +73,20 @@ With the [pre-commit](https://pre-commit.com) framework — `iopt` rewrites the 
       name: optimize images
       entry: iopt
       language: system
-      files: \.(png|jpe?g)$
+      files: \.(png|jpe?g|gif)$
 ```
 
 Or as a plain git hook in `.git/hooks/pre-commit`:
 
 ```sh
 #!/bin/sh
-git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(png|jpe?g)$' \
+git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(png|jpe?g|gif)$' \
   | xargs -r iopt && git update-index --again
 ```
 
 ## Guarantees
 
-- **Pixels are never modified.** PNGs are recompressed losslessly; JPEGs never go through a decode–encode cycle — the frequency-domain coefficients are copied untouched.
+- **Pixels are never modified.** PNGs are recompressed losslessly; JPEGs never go through a decode–encode cycle — the frequency-domain coefficients are copied untouched; GIFs are restructured only in ways proven to render identically (and left alone otherwise).
 - **Files only shrink.** If recompression doesn't help, the file is left exactly as it was.
 - **Writes are atomic.** Output goes to a temp file in the same directory and is renamed over the original, preserving permissions.
 - **Corrupt input is rejected.** libjpeg normally pads truncated files with gray blocks and carries on; `iopt` treats decoder warnings as errors and refuses to rewrite such files (exit `2`).
@@ -92,7 +94,7 @@ git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(png|jpe?g)$' \
 
 ## Non-goals
 
-Lossy compression (quality reduction, resizing, chroma subsampling) is out of scope by design — `iopt` is meant to be safe to run automatically on every commit. GIF, WebP and SVG support may come later.
+Lossy compression (quality reduction, resizing, chroma subsampling) is out of scope by design — `iopt` is meant to be safe to run automatically on every commit. WebP and SVG support may come later.
 
 ## Development
 
@@ -101,12 +103,15 @@ cargo build --release
 cargo clippy --all-targets
 ```
 
-`examples/jpegcmp.rs` decodes two JPEGs through libjpeg with no color management and verifies the pixel data is identical — useful for convincing yourself (or reviewers) that the JPEG path really is lossless:
+Two verification helpers exist for convincing yourself (or reviewers) that the optimizations really are lossless. `examples/jpegcmp.rs` decodes two JPEGs through libjpeg with no color management and verifies the pixel data is identical; `examples/gifcmp.rs` does the same for GIFs at the rendering level — composited frames, delays and loop count (`examples/gifgen.rs` generates GIF test fixtures, including pathological ones):
 
 ```console
 $ cargo run --release --example jpegcmp -- original.jpg optimized.jpg
 a: 1200x1200, b: 1200x1200
 PIXELS IDENTICAL
+
+$ cargo run --release --example gifcmp -- original.gif optimized.gif
+20 frames, 200x200, repeat Infinite: RENDERS IDENTICAL
 ```
 
 ## License

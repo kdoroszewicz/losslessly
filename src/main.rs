@@ -1,3 +1,4 @@
+mod gif;
 mod jpeg;
 mod png;
 
@@ -10,7 +11,7 @@ use walkdir::WalkDir;
 
 const EXAMPLES: &str = "\
 Examples:
-  iopt assets/                   optimize every PNG/JPEG under assets/ in place
+  iopt assets/                   optimize every PNG/JPEG/GIF under assets/ in place
   iopt --check assets/           CI gate: exit 1 if any file could be smaller
   iopt --strip --zopfli assets/  smallest output, metadata removed
 
@@ -21,7 +22,7 @@ Pre-commit hook (.pre-commit-config.yaml):
         name: optimize images
         entry: iopt
         language: system
-        files: \\.(png|jpe?g)$";
+        files: \\.(png|jpe?g|gif)$";
 
 /// Lossless image optimizer for CI pipelines and pre-commit hooks.
 ///
@@ -42,7 +43,7 @@ struct Cli {
     #[arg(long)]
     check: bool,
 
-    /// Strip metadata (JPEG: EXIF/ICC/comments; PNG: non-essential chunks)
+    /// Strip metadata (JPEG: EXIF/ICC/comments; PNG: non-essential chunks; GIF: comments)
     #[arg(long)]
     strip: bool,
 
@@ -67,6 +68,7 @@ struct Cli {
 enum Format {
     Png,
     Jpeg,
+    Gif,
 }
 
 enum Outcome {
@@ -95,7 +97,7 @@ fn main() -> ExitCode {
 
     if files.is_empty() {
         if !cli.quiet {
-            println!("No PNG or JPEG files found.");
+            println!("No PNG, JPEG or GIF files found.");
         }
         return ExitCode::SUCCESS;
     }
@@ -189,7 +191,7 @@ fn collect_files(paths: &[PathBuf]) -> Result<Vec<(PathBuf, Format)>> {
             match format_from_extension(path) {
                 Some(format) => files.push((path.clone(), format)),
                 None => bail!(
-                    "{}: unsupported file type (expected .png, .jpg or .jpeg)",
+                    "{}: unsupported file type (expected .png, .jpg, .jpeg or .gif)",
                     path.display()
                 ),
             }
@@ -206,6 +208,7 @@ fn format_from_extension(path: &Path) -> Option<Format> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
         "png" => Some(Format::Png),
         "jpg" | "jpeg" => Some(Format::Jpeg),
+        "gif" => Some(Format::Gif),
         _ => None,
     }
 }
@@ -217,6 +220,7 @@ fn process_file(path: &Path, format: Format, cli: &Cli) -> Result<Outcome> {
     let magic_ok = match format {
         Format::Png => data.starts_with(b"\x89PNG\r\n\x1a\n"),
         Format::Jpeg => data.starts_with(b"\xff\xd8\xff"),
+        Format::Gif => data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a"),
     };
     if !magic_ok {
         bail!("file content does not match its extension, skipping");
@@ -225,6 +229,10 @@ fn process_file(path: &Path, format: Format, cli: &Cli) -> Result<Outcome> {
     let optimized = match format {
         Format::Png => png::optimize(&data, cli.level, cli.zopfli, cli.strip)?,
         Format::Jpeg => jpeg::optimize(&data, cli.strip)?,
+        Format::Gif => match gif::optimize(&data, cli.strip)? {
+            Some(out) => out,
+            None => return Ok(Outcome::Unchanged),
+        },
     };
 
     if optimized.len() >= data.len() {

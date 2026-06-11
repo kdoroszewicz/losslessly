@@ -10,10 +10,14 @@ categories = ["command-line-utilities", "multimedia::images"]
 [dependencies]
 anyhow = "1.0.102"
 clap = { version = "4.6.1", features = ["derive"] }
+gif = "0.14.2"
+gif-dispose = "6.0.0"
+imgref = "1.12.2"
 libc = "0.2.186"
 mozjpeg-sys = { version = "2.2.3", features = ["jpegtran"] }
 oxipng = { version = "10.1.1", default-features = false, features = ["parallel", "zopfli"] }
 rayon = "1.12.0"
+rgb = "0.8.53"
 walkdir = "2.5.0"
 
 [profile.release]
