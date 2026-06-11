@@ -62,18 +62,18 @@ Fail the build when someone commits an unoptimized image:
   run: iopt --check assets/
 ```
 
-### pre-commit
+### Pre-commit hook
 
-With the [pre-commit](https://pre-commit.com) framework — `iopt` rewrites the files and pre-commit flags the modified ones:
+With [lefthook](https://github.com/evilmartians/lefthook) — staged images are optimized and re-staged automatically:
 
 ```yaml
-- repo: local
-  hooks:
-    - id: iopt
-      name: optimize images
-      entry: iopt
-      language: system
-      files: \.(png|jpe?g|gif)$
+# lefthook.yml
+pre-commit:
+  commands:
+    iopt:
+      glob: "*.{png,jpg,jpeg,gif}"
+      run: iopt {staged_files}
+      stage_fixed: true
 ```
 
 Or as a plain git hook in `.git/hooks/pre-commit`:
@@ -92,9 +92,20 @@ git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(png|jpe?g|gif)$' 
 - **Corrupt input is rejected.** libjpeg normally pads truncated files with gray blocks and carries on; `iopt` treats decoder warnings as errors and refuses to rewrite such files (exit `2`).
 - **Mislabeled files are skipped.** Content is sniffed by magic bytes, so a PNG named `.jpg` is reported instead of fed to the wrong codec.
 
+## Formats
+
+| Format | Status | How |
+| --- | --- | --- |
+| PNG / APNG | ✅ Supported | oxipng recompression (reductions, filter trials, libdeflate/Zopfli) |
+| JPEG | ✅ Supported | mozjpeg entropy-coding transcode (`jpegtran -optimize` equivalent) |
+| GIF | ✅ Supported | interframe delta re-encoding with exact-color global palette |
+| WebP | 🔜 Planned | re-encode lossless WebP at maximum effort; leave lossy WebP untouched |
+| SVG | 🔜 Planned | markup minification (svgo-style) — lossless to the rendered image |
+| AVIF / JPEG XL | 🤔 Considering | lossless re-encode at higher effort settings where the encoder allows it |
+
 ## Non-goals
 
-Lossy compression (quality reduction, resizing, chroma subsampling) is out of scope by design — `iopt` is meant to be safe to run automatically on every commit. WebP and SVG support may come later.
+Lossy compression (quality reduction, resizing, chroma subsampling) is out of scope by design — `iopt` is meant to be safe to run automatically on every commit. Converting between formats (e.g. PNG → WebP) is also out of scope: `iopt` makes the files you have smaller, it doesn't change what they are.
 
 ## Development
 

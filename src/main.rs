@@ -15,14 +15,13 @@ Examples:
   iopt --check assets/           CI gate: exit 1 if any file could be smaller
   iopt --strip --zopfli assets/  smallest output, metadata removed
 
-Pre-commit hook (.pre-commit-config.yaml):
-  - repo: local
-    hooks:
-      - id: iopt
-        name: optimize images
-        entry: iopt
-        language: system
-        files: \\.(png|jpe?g|gif)$";
+Pre-commit hook (lefthook.yml):
+  pre-commit:
+    commands:
+      iopt:
+        glob: \"*.{png,jpg,jpeg,gif}\"
+        run: iopt {staged_files}
+        stage_fixed: true";
 
 /// Lossless image optimizer for CI pipelines and pre-commit hooks.
 ///
@@ -206,7 +205,7 @@ fn collect_files(paths: &[PathBuf]) -> Result<Vec<(PathBuf, Format)>> {
 
 fn format_from_extension(path: &Path) -> Option<Format> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
-        "png" => Some(Format::Png),
+        "png" | "apng" => Some(Format::Png),
         "jpg" | "jpeg" => Some(Format::Jpeg),
         "gif" => Some(Format::Gif),
         _ => None,
