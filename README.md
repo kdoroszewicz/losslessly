@@ -1,11 +1,11 @@
-# iopt
+# losslessly
 
 Fast, lossless image optimizer for the command line.
 
-`iopt` recompresses PNG, JPEG, GIF, WebP and SVG files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a small, dependency-free CLI that works anywhere: a folder of photos, a website's asset directory, a script, a build pipeline. Files are only rewritten when the result is smaller, so running it twice is a no-op.
+`losslessly` recompresses PNG, JPEG, GIF, WebP and SVG files in place without touching a single pixel — like [ImageOptim](https://imageoptim.com), but as a small, dependency-free CLI that works anywhere: a folder of photos, a website's asset directory, a script, a build pipeline. Files are only rewritten when the result is smaller, so running it twice is a no-op.
 
 ```console
-$ iopt assets/
+$ losslessly assets/
 assets/icons/icon.png  27.3 KB → 23.4 KB  (-14.3%)
 assets/photo.jpg  149.5 KB → 135.4 KB  (-9.5%)
 assets/photo.png  653.1 KB → 472.0 KB  (-27.7%)
@@ -19,7 +19,7 @@ assets/icon.svg  1.5 KB → 767 B  (-50.1%)
 
 Most images ship with 10–30% of pure waste: unoptimized deflate streams, non-optimized Huffman tables, baseline instead of progressive encoding. Export tools don't care; your disk space and bandwidth do.
 
-`iopt` removes that waste **losslessly** — the decoded pixels are bit-for-bit identical before and after. There is no quality slider because nothing is ever degraded.
+`losslessly` removes that waste **losslessly** — the decoded pixels are bit-for-bit identical before and after. There is no quality slider because nothing is ever degraded.
 
 - **PNG** — recompressed with [oxipng](https://github.com/oxipng/oxipng) (bit-depth/color-type reductions, filter trials, libdeflate or Zopfli).
 - **JPEG** — transcoded with [mozjpeg](https://github.com/mozilla/mozjpeg) the same way `jpegtran -optimize` works: DCT coefficients are copied verbatim and only the entropy coding is rebuilt. Both optimized-baseline and progressive variants are tried; the smaller one wins.
@@ -40,10 +40,10 @@ Requires a Rust toolchain. The mozjpeg and libwebp C libraries are built and sta
 ## Usage
 
 ```sh
-iopt photos/ logo.png            # optimize files and directories in place
-iopt --check assets/             # write nothing, exit 1 if anything is optimizable
-iopt --strip photos/             # also remove EXIF/ICC/comments
-iopt --zopfli --level 6 assets/  # squeeze PNGs as hard as possible (slow)
+losslessly photos/ logo.png            # optimize files and directories in place
+losslessly --check assets/             # write nothing, exit 1 if anything is optimizable
+losslessly --strip photos/             # also remove EXIF/ICC/comments
+losslessly --zopfli --level 6 assets/  # squeeze PNGs as hard as possible (slow)
 ```
 
 | Option | Description |
@@ -62,7 +62,7 @@ Exit codes: `0` success · `1` `--check` found optimizable files · `2` one or m
 - **Pixels are never modified.** PNGs and lossless WebPs are recompressed losslessly; JPEGs never go through a decode–encode cycle — the frequency-domain coefficients are copied untouched; GIFs are restructured only in ways proven to render identically (and left alone otherwise). The sole exception is SVG, where the guarantee is rendering-equivalence rather than bit-identity (see Formats).
 - **Files only shrink.** If recompression doesn't help, the file is left exactly as it was.
 - **Writes are atomic.** Output goes to a temp file in the same directory and is renamed over the original, preserving permissions.
-- **Corrupt input is rejected.** libjpeg normally pads truncated files with gray blocks and carries on; `iopt` treats decoder warnings as errors and refuses to rewrite such files (exit `2`).
+- **Corrupt input is rejected.** libjpeg normally pads truncated files with gray blocks and carries on; `losslessly` treats decoder warnings as errors and refuses to rewrite such files (exit `2`).
 - **Mislabeled files are skipped.** Content is sniffed by magic bytes, so a PNG named `.jpg` is reported instead of fed to the wrong codec.
 
 ## Formats
@@ -78,13 +78,13 @@ Exit codes: `0` success · `1` `--check` found optimizable files · `2` one or m
 
 ## Automation
 
-Because `iopt` is idempotent, only ever shrinks files, and reports through exit codes, it is safe to run unattended. A few recipes:
+Because `losslessly` is idempotent, only ever shrinks files, and reports through exit codes, it is safe to run unattended. A few recipes:
 
 **Fail a CI build when someone commits an unoptimized image:**
 
 ```yaml
 - name: Check images are optimized
-  run: iopt --check assets/
+  run: losslessly --check assets/
 ```
 
 **Optimize staged images on commit** with [lefthook](https://github.com/evilmartians/lefthook) (files are re-staged automatically):
@@ -93,9 +93,9 @@ Because `iopt` is idempotent, only ever shrinks files, and reports through exit 
 # lefthook.yml
 pre-commit:
   commands:
-    iopt:
+    losslessly:
       glob: "*.{png,apng,jpg,jpeg,gif,webp,svg}"
-      run: iopt {staged_files}
+      run: losslessly {staged_files}
       stage_fixed: true
 ```
 
@@ -104,12 +104,12 @@ Or as a plain git hook in `.git/hooks/pre-commit`:
 ```sh
 #!/bin/sh
 git diff --cached --name-only --diff-filter=ACM | grep -iE '\.(a?png|jpe?g|gif|webp|svg)$' \
-  | xargs -r iopt && git update-index --again
+  | xargs -r losslessly && git update-index --again
 ```
 
 ## Non-goals
 
-Lossy compression (quality reduction, resizing, chroma subsampling) is out of scope by design — `iopt` is meant to be safe to run unattended. Converting between formats (e.g. PNG → WebP) is also out of scope: `iopt` makes the files you have smaller, it doesn't change what they are.
+Lossy compression (quality reduction, resizing, chroma subsampling) is out of scope by design — `losslessly` is meant to be safe to run unattended. Converting between formats (e.g. PNG → WebP) is also out of scope: `losslessly` makes the files you have smaller, it doesn't change what they are.
 
 ## Development
 

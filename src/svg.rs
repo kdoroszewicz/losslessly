@@ -37,7 +37,7 @@ pub fn optimize(data: &[u8], strip: bool) -> Result<Vec<u8>> {
 
 /// oxvg's `safe` preset, minus the metadata-removing plugins unless the user
 /// asked for `--strip`: comments, `<metadata>`, `<desc>` and editor-namespace
-/// data are content, not waste, under iopt's default contract.
+/// data are content, not waste, under losslessly's default contract.
 fn preset(strip: bool) -> Jobs {
     let mut jobs = Jobs::safe();
     if !strip {

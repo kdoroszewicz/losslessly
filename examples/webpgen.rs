@@ -1,9 +1,9 @@
 //! Generates WebP test fixtures: `cargo run --example webpgen -- <outdir>`
 //!
-//! - lossless.webp: VP8L encoded at minimum effort (what iopt should shrink)
+//! - lossless.webp: VP8L encoded at minimum effort (what losslessly should shrink)
 //! - meta.webp: the same image in an extended (VP8X) container with EXIF
-//!   and XMP chunks that iopt must carry over
-//! - lossy.webp: VP8 encoded; iopt must leave it untouched
+//!   and XMP chunks that losslessly must carry over
+//! - lossy.webp: VP8 encoded; losslessly must leave it untouched
 
 use webp::{Encoder, WebPConfig};
 
@@ -60,8 +60,8 @@ fn main() {
     if image_chunk.len() % 2 == 1 {
         body.push(0);
     }
-    chunk(&mut body, b"EXIF", b"iopt-test-exif-payload");
-    chunk(&mut body, b"XMP ", b"<x:xmpmeta>iopt</x:xmpmeta>");
+    chunk(&mut body, b"EXIF", b"losslessly-test-exif-payload");
+    chunk(&mut body, b"XMP ", b"<x:xmpmeta>losslessly</x:xmpmeta>");
     let mut meta = Vec::new();
     meta.extend_from_slice(b"RIFF");
     meta.extend_from_slice(&((body.len() + 4) as u32).to_le_bytes());

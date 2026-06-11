@@ -13,16 +13,16 @@ use walkdir::WalkDir;
 
 const EXAMPLES: &str = "\
 Examples:
-  iopt assets/                   optimize every supported image under assets/ in place
-  iopt --check assets/           CI gate: exit 1 if any file could be smaller
-  iopt --strip --zopfli assets/  smallest output, metadata removed
+  losslessly assets/                   optimize every supported image under assets/ in place
+  losslessly --check assets/           CI gate: exit 1 if any file could be smaller
+  losslessly --strip --zopfli assets/  smallest output, metadata removed
 
 Pre-commit hook (lefthook.yml):
   pre-commit:
     commands:
-      iopt:
+      losslessly:
         glob: \"*.{png,apng,jpg,jpeg,gif,webp,svg}\"
-        run: iopt {staged_files}
+        run: losslessly {staged_files}
         stage_fixed: true";
 
 /// Fast, lossless image optimizer.
@@ -35,7 +35,7 @@ Pre-commit hook (lefthook.yml):
 /// Exit codes: 0 = success, 1 = --check found optimizable files,
 /// 2 = one or more files failed to process.
 #[derive(Parser)]
-#[command(name = "iopt", version, after_help = EXAMPLES)]
+#[command(name = "losslessly", version, after_help = EXAMPLES)]
 struct Cli {
     /// Files or directories to optimize (directories are scanned recursively)
     #[arg(required = true)]
@@ -283,7 +283,7 @@ fn write_atomically(path: &Path, data: &[u8]) -> Result<()> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let tmp = dir.join(format!(".{file_name}.iopt-tmp{}", std::process::id()));
+    let tmp = dir.join(format!(".{file_name}.losslessly-tmp{}", std::process::id()));
 
     let result = (|| -> Result<()> {
         std::fs::write(&tmp, data)?;

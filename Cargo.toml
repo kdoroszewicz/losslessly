@@ -1,5 +1,5 @@
 [package]
-name = "iopt"
+name = "losslessly"
 version = "0.1.0"
 edition = "2024"
 description = "Fast, lossless image optimizer for PNG, JPEG, GIF, WebP and SVG"

@@ -5,7 +5,7 @@
 //!   with a comment extension
 //! - static.gif: single frame, no animation
 //! - trans.gif: pixels go opaque -> transparent (Background disposal);
-//!   iopt must refuse to rewrite this one
+//!   losslessly must refuse to rewrite this one
 
 use gif::{DisposalMethod, Encoder, ExtensionData, Frame, Repeat};
 use std::borrow::Cow;
@@ -24,7 +24,7 @@ fn main() {
     std::fs::create_dir_all(&dir).unwrap();
 
     // anim.gif: static patterned background, 20x20 square moving diagonally,
-    // every frame written as a full canvas (the worst case iopt should fix).
+    // every frame written as a full canvas (the worst case losslessly should fix).
     let (w, h) = (200u16, 200u16);
     let mut file = File::create(format!("{dir}/anim.gif")).unwrap();
     let mut enc = Encoder::new(&mut file, w, h, &palette()).unwrap();
@@ -36,7 +36,7 @@ fn main() {
         None,
     ))
     .unwrap();
-    enc.write_raw_extension(gif::AnyExtension(0xFE), &[b"iopt test comment"])
+    enc.write_raw_extension(gif::AnyExtension(0xFE), &[b"losslessly test comment"])
         .unwrap();
     let background: Vec<u8> = (0..w as usize * h as usize)
         .map(|i| (((i % w as usize) / 25 + (i / w as usize) / 25) % 12) as u8)
