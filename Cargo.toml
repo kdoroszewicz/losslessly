@@ -29,5 +29,10 @@ webp = { version = "0.3.1", default-features = false }
 lto = true
 strip = true
 
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
 [dev-dependencies]
 resvg = "0.47.0"

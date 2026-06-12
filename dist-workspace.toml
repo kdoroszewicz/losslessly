@@ -1,0 +1,32 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "powershell"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Extra files to copy into every archive (mozjpeg/libwebp attribution)
+include = ["THIRD-PARTY-NOTICES.md"]
+# Build full artifacts on PRs that touch release config, so the pipeline is
+# exercised before a real tag push
+pr-run-mode = "upload"
+
+# Build aarch64 Linux natively instead of cross-compiling the C dependencies
+[dist.github-custom-runners]
+aarch64-unknown-linux-gnu = "ubuntu-24.04-arm"
+
+# nasm is needed by mozjpeg-sys for its x86/x86_64 SIMD assembly
+[dist.dependencies.apt]
+nasm = { version = "*", targets = ["x86_64-unknown-linux-gnu"] }
+
+[dist.dependencies.homebrew]
+nasm = { version = "*", targets = ["x86_64-apple-darwin"] }
+
+[dist.dependencies.chocolatey]
+nasm = "*"
