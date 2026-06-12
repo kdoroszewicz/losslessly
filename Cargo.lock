@@ -953,7 +953,6 @@ dependencies = [
  "clap",
  "gif",
  "gif-dispose",
- "imgref",
  "libc",
  "mozjpeg-sys",
  "oxipng",

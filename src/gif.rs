@@ -47,8 +47,8 @@ fn analyze(data: &[u8]) -> Result<Option<Plan>> {
     let mut decoder = decoder(data)?;
     let mut screen = gif_dispose::Screen::new_decoder(&decoder);
 
-    let mut palette: Vec<RGB8> = Vec::new();
-    let mut color_index: HashMap<RGB8, u8> = HashMap::new();
+    let mut palette: Vec<RGB8> = Vec::with_capacity(256);
+    let mut color_index: HashMap<RGB8, u8> = HashMap::with_capacity(256);
     let mut has_transparency = false;
     let mut prev: Option<Vec<RGBA8>> = None;
     let mut frames = 0usize;
@@ -123,12 +123,18 @@ fn encode(data: &[u8], plan: &Plan, strip: bool) -> Result<Vec<u8>> {
     }
 
     let width = plan.width as usize;
-    let index_of = |px: RGBA8| -> u8 {
+    // The second decode pass should see exactly the canvases `analyze` saw,
+    // but don't bet the process on it: a decoder inconsistency surfaces as an
+    // error for this file instead of a panic that aborts the whole batch.
+    let index_of = |px: RGBA8| -> Result<u8> {
         if px.a == 0 {
             plan.transparent
-                .expect("transparency implies reserved slot")
+                .context("transparent pixel without reserved slot (decode inconsistency)")
         } else {
-            plan.color_index[&px.rgb()]
+            plan.color_index
+                .get(&px.rgb())
+                .copied()
+                .context("pixel color missing from palette (decode inconsistency)")
         }
     };
 
@@ -149,36 +155,47 @@ fn encode(data: &[u8], plan: &Plan, strip: bool) -> Result<Vec<u8>> {
             None => {
                 frame.width = plan.width;
                 frame.height = plan.height;
-                frame.buffer = canvas.iter().map(|&px| index_of(px)).collect();
+                frame.buffer = canvas
+                    .iter()
+                    .map(|&px| index_of(px))
+                    .collect::<Result<Vec<u8>>>()?
+                    .into();
             }
-            Some(prev) => match diff_bbox(prev, &canvas, width) {
-                None => {
-                    // Nothing changed; emit a 1x1 transparent frame to keep
-                    // the frame count and timing intact.
-                    frame.width = 1;
-                    frame.height = 1;
-                    frame.buffer = vec![plan.transparent.unwrap()].into();
-                }
-                Some((x0, y0, x1, y1)) => {
-                    frame.left = x0 as u16;
-                    frame.top = y0 as u16;
-                    frame.width = (x1 - x0 + 1) as u16;
-                    frame.height = (y1 - y0 + 1) as u16;
-                    let mut buffer =
-                        Vec::with_capacity(frame.width as usize * frame.height as usize);
-                    for y in y0..=y1 {
-                        for x in x0..=x1 {
-                            let i = y * width + x;
-                            buffer.push(if canvas[i] == prev[i] {
-                                plan.transparent.unwrap()
-                            } else {
-                                index_of(canvas[i])
-                            });
-                        }
+            Some(prev) => {
+                // `analyze` reserves a transparent slot whenever there is
+                // more than one frame, so it must be present here.
+                let transparent = plan
+                    .transparent
+                    .context("delta frame without reserved transparent slot")?;
+                match diff_bbox(prev, &canvas, width) {
+                    None => {
+                        // Nothing changed; emit a 1x1 transparent frame to keep
+                        // the frame count and timing intact.
+                        frame.width = 1;
+                        frame.height = 1;
+                        frame.buffer = vec![transparent].into();
                     }
-                    frame.buffer = buffer.into();
+                    Some((x0, y0, x1, y1)) => {
+                        frame.left = x0 as u16;
+                        frame.top = y0 as u16;
+                        frame.width = (x1 - x0 + 1) as u16;
+                        frame.height = (y1 - y0 + 1) as u16;
+                        let mut buffer =
+                            Vec::with_capacity(frame.width as usize * frame.height as usize);
+                        for y in y0..=y1 {
+                            for x in x0..=x1 {
+                                let i = y * width + x;
+                                buffer.push(if canvas[i] == prev[i] {
+                                    transparent
+                                } else {
+                                    index_of(canvas[i])?
+                                });
+                            }
+                        }
+                        frame.buffer = buffer.into();
+                    }
                 }
-            },
+            }
         }
 
         encoder.write_frame(&frame)?;

@@ -40,6 +40,10 @@ pub fn optimize(data: &[u8], strip: bool) -> Result<Vec<u8>> {
 }
 
 fn transcode(data: &[u8], progressive: bool, strip: bool) -> Result<Vec<u8>> {
+    // SAFETY: `transcode_unchecked` requires that libjpeg errors unwind rather
+    // than `exit()`; it installs `error_exit_panic` on both codec structs
+    // before any decoding starts, and this `catch_unwind` is the matching
+    // landing pad for those panics.
     catch_unwind(AssertUnwindSafe(|| unsafe {
         transcode_unchecked(data, progressive, strip)
     }))
@@ -58,9 +62,12 @@ fn transcode(data: &[u8], progressive: bool, strip: bool) -> Result<Vec<u8>> {
 /// (mozjpeg-sys is built with unwinding support) and is caught in `transcode`.
 unsafe extern "C-unwind" fn error_exit_panic(cinfo: &mut jpeg_common_struct) {
     let buf = [0u8; 80];
+    // SAFETY: libjpeg only invokes `error_exit` on a struct whose `err` field
+    // was initialized by `jpeg_std_error`, which fills in `format_message`.
     if let Some(format) = unsafe { (*cinfo.err).format_message } {
-        // writes a NUL-terminated C string into buf (the &[u8; 80] binding is
-        // a bindgen artifact; the callee writes through it)
+        // SAFETY: `format_message` expects a JMSG_LENGTH_MAX (80) byte buffer
+        // and writes a NUL-terminated C string into it (the &[u8; 80] binding
+        // is a bindgen artifact; the callee writes through it).
         unsafe { format(cinfo, &buf) };
     }
     let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
@@ -70,6 +77,10 @@ unsafe extern "C-unwind" fn error_exit_panic(cinfo: &mut jpeg_common_struct) {
 struct DecompressGuard(jpeg_decompress_struct);
 impl Drop for DecompressGuard {
     fn drop(&mut self) {
+        // SAFETY: the struct was initialized with `jpeg_create_decompress`
+        // right after construction; `jpeg_destroy_*` is documented as safe to
+        // call in any state after creation, including mid-decode after an
+        // error unwound past it.
         unsafe { jpeg_destroy_decompress(&mut self.0) }
     }
 }
@@ -77,11 +88,24 @@ impl Drop for DecompressGuard {
 struct CompressGuard(jpeg_compress_struct);
 impl Drop for CompressGuard {
     fn drop(&mut self) {
+        // SAFETY: same as `DecompressGuard`, with `jpeg_create_compress`.
         unsafe { jpeg_destroy_compress(&mut self.0) }
     }
 }
 
+/// # Safety
+///
+/// libjpeg reports errors by panicking out of this function (via
+/// `error_exit_panic`), leaving the codec structs mid-operation; the caller
+/// must wrap the call in `catch_unwind` so those panics become `Err`s instead
+/// of unwinding further. Cleanup of the structs themselves is handled by the
+/// `Drop` guards below.
 unsafe fn transcode_unchecked(data: &[u8], progressive: bool, strip: bool) -> Vec<u8> {
+    // SAFETY: standard libjpeg calling sequence. The codec structs are
+    // zero-initialized (valid for these C structs), get their error handler
+    // installed before `jpeg_create_*`, and are destroyed by the guards'
+    // `Drop`. `src_err`/`dst_err` are stack locals that outlive the guards
+    // borrowing them. Pointer contracts of individual calls are noted inline.
     unsafe {
         let copy_option = if strip {
             JCOPY_OPTION_JCOPYOPT_NONE
@@ -97,9 +121,14 @@ unsafe fn transcode_unchecked(data: &[u8], progressive: bool, strip: bool) -> Ve
         src.0.common.err = &mut src_err;
         jpeg_create_decompress(&mut src.0);
 
+        // SAFETY: `data` is borrowed for the whole function, covering every
+        // read libjpeg makes through this pointer.
         jpeg_mem_src(&mut src.0, data.as_ptr(), data.len() as c_ulong);
         jcopy_markers_setup(&mut src.0, copy_option);
         jpeg_read_header(&mut src.0, 1);
+        // The coefficient arrays live in `src`'s memory pool and stay valid
+        // until `jpeg_finish_decompress`, which runs after they are consumed
+        // by `jpeg_write_coefficients`.
         let coefficients = jpeg_read_coefficients(&mut src.0);
 
         let mut dst_err: jpeg_error_mgr = mem::zeroed();
@@ -132,6 +161,9 @@ unsafe fn transcode_unchecked(data: &[u8], progressive: bool, strip: bool) -> Ve
             panic!("corrupt JPEG data (decoder reported warnings), refusing to rewrite");
         }
 
+        // SAFETY: after `jpeg_finish_compress`, `jpeg_mem_dest` guarantees
+        // `out_buf` points to a malloc'd buffer of exactly `out_size` bytes;
+        // `to_vec` copies it before the single `free`.
         let result = std::slice::from_raw_parts(out_buf, out_size as usize).to_vec();
         libc::free(out_buf.cast());
         result

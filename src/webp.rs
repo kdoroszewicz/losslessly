@@ -103,7 +103,15 @@ fn build_extended_container(
 
     let features =
         BitstreamFeatures::new(encoded).ok_or_else(|| anyhow!("unreadable encoder output"))?;
-    let (w, h) = (features.width() - 1, features.height() - 1);
+    // VP8X stores width/height minus one; a zero dimension is unrepresentable.
+    let w = features
+        .width()
+        .checked_sub(1)
+        .ok_or_else(|| anyhow!("encoder returned zero-width image"))?;
+    let h = features
+        .height()
+        .checked_sub(1)
+        .ok_or_else(|| anyhow!("encoder returned zero-height image"))?;
     canvas[4..7].copy_from_slice(&w.to_le_bytes()[..3]);
     canvas[7..10].copy_from_slice(&h.to_le_bytes()[..3]);
 
