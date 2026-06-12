@@ -31,7 +31,21 @@ Most images ship with 10–30% of pure waste: unoptimized deflate streams, non-o
 
 ## Install
 
-From [crates.io](https://crates.io/crates/losslessly):
+**Prebuilt binaries** (macOS, Linux, Windows — no Rust toolchain needed):
+
+```sh
+# macOS / Linux
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/kdoroszewicz/losslessly/releases/latest/download/losslessly-installer.sh | sh
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/kdoroszewicz/losslessly/releases/latest/download/losslessly-installer.ps1 | iex"
+```
+
+Or download an archive directly from the [releases page](https://github.com/kdoroszewicz/losslessly/releases). If you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), `cargo binstall losslessly` fetches the same binaries.
+
+**From source** via [crates.io](https://crates.io/crates/losslessly):
 
 ```sh
 cargo install losslessly
@@ -43,7 +57,7 @@ Or from a checkout of this repository:
 cargo install --path .
 ```
 
-Requires a Rust toolchain. The mozjpeg and libwebp C libraries are built and statically linked automatically; no system dependencies are needed.
+Building from source requires a Rust toolchain (and nasm on x86 for mozjpeg's SIMD). The mozjpeg and libwebp C libraries are built and statically linked automatically; no other system dependencies are needed.
 
 ## Usage
 
