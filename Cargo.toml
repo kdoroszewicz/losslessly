@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 description = "Fast, lossless image optimizer for PNG, JPEG, GIF, WebP and SVG"
 license = "MIT"
+repository = "https://github.com/kdoroszewicz/losslessly"
+homepage = "https://github.com/kdoroszewicz/losslessly"
+readme = "README.md"
 keywords = ["image", "optimization", "png", "jpeg", "lossless"]
 categories = ["command-line-utilities", "multimedia::images"]
 
