@@ -31,6 +31,14 @@ Most images ship with 10–30% of pure waste: unoptimized deflate streams, non-o
 
 ## Install
 
+From [crates.io](https://crates.io/crates/losslessly):
+
+```sh
+cargo install losslessly
+```
+
+Or from a checkout of this repository:
+
 ```sh
 cargo install --path .
 ```
